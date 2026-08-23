@@ -19,20 +19,123 @@
 # ════
 
 ---
+# ServiceAccount para Workload Identity del Collector
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector-sa
+  namespace: otel-lab
+  annotations:
+    iam.gke.io/gcp-service-account: otel-collector@coastal-gantry-506317-k5.iam.gserviceaccount.com
+
+---
+# ConfigMap — Variables compartidas del entorno
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-lab-config
   namespace: otel-lab
 data:
-  ENVIRONMENT:     "production"
-  CLOUD_PROVIDER:  "gcp"
-  CLOUD_REGION:    "us-central1"
-  OTEL_ENABLED:    "true"
+  ENVIRONMENT:               "production"
+  CLOUD_PROVIDER:              "gcp"
+  CLOUD_REGION:                "us-central1"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector-svc:4317"
-  DATABASE_URL:    "postgresql://app:secret@postgres-svc:5432/appdb"
+  DATABASE_URL:                "postgresql://app:secret@postgres-svc:5432/appdb"
+  GCP_PROJECT_ID:              "coastal-gantry-506317-k5"
+  JAEGER_ENDPOINT:             "jaeger-svc:4317"
 
 ---
+# ConfigMap para PostgreSQL init script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: otel-lab
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS orders (
+      id VARCHAR(50) PRIMARY KEY,
+      product VARCHAR(50),
+      quantity INT,
+      status VARCHAR(50)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory (
+      product_id VARCHAR(50) PRIMARY KEY,
+      available INT,
+      warehouse VARCHAR(50),
+      last_updated TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    INSERT INTO orders (id, product, quantity, status) VALUES
+      ('ord-001', 'LAPTOP-X1', 1, 'delivered'),
+      ('ord-002', 'PHONE-X2', 2, 'shipped')
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO inventory (product_id, available, warehouse) VALUES
+      ('LAPTOP-X1', 15, 'WH-BOGOTA'),
+      ('PHONE-X2', 8, 'WH-MEDELLIN')
+    ON CONFLICT DO NOTHING;
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: otel-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              value: "app"
+            - name: POSTGRES_PASSWORD
+              value: "secret"
+            - name: POSTGRES_DB
+              value: "appdb"
+          volumeMounts:
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "app", "-d", "appdb"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: init-sql
+          configMap:
+            name: postgres-init
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: otel-lab
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+# OTel Collector — DaemonSet
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -61,7 +164,7 @@ spec:
             - containerPort: 4318
               name: otlp-http
             - containerPort: 8888
-              name: metrics-int
+              name: metrics-internal
             - containerPort: 8889
               name: metrics-prom
             - containerPort: 13133
@@ -84,8 +187,16 @@ spec:
                 configMapKeyRef:
                   name: otel-lab-config
                   key: CLOUD_REGION
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: otel-lab-config
+                  key: GCP_PROJECT_ID
             - name: JAEGER_ENDPOINT
-              value: "jaeger-svc:4317"
+              valueFrom:
+                configMapKeyRef:
+                  name: otel-lab-config
+                  key: JAEGER_ENDPOINT
           volumeMounts:
             - name: collector-config
               mountPath: /conf
@@ -107,6 +218,7 @@ spec:
             name: collector-config
 
 ---
+# Service para el OTel Collector
 apiVersion: v1
 kind: Service
 metadata:
@@ -130,11 +242,9 @@ spec:
     - name: health
       port: 13133
       targetPort: 13133
-    - name: metrics-int
-      port: 8888
-      targetPort: 8888
 
 ---
+# service-a Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -166,6 +276,8 @@ spec:
           env:
             - name: SERVICE_B_URL
               value: "http://service-b-svc:8001"
+            - name: OTEL_ENABLED
+              value: "true"
           resources:
             requests:
               cpu:    100m
@@ -187,6 +299,7 @@ spec:
             periodSeconds: 10
 
 ---
+# service-a Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -202,6 +315,7 @@ spec:
   type: LoadBalancer
 
 ---
+# service-b Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -230,6 +344,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: otel-lab-config
+          env:
+            - name: OTEL_ENABLED
+              value: "true"
           resources:
             requests:
               cpu:    100m
@@ -251,6 +368,7 @@ spec:
             periodSeconds: 10
 
 ---
+# service-b Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -266,6 +384,7 @@ spec:
   type: ClusterIP
 
 ---
+# Jaeger Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -294,6 +413,7 @@ spec:
               value: "true"
 
 ---
+# Jaeger Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -312,6 +432,7 @@ spec:
   type: LoadBalancer
 
 ---
+# HorizontalPodAutoscaler — service-a
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

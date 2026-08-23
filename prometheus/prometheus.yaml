@@ -3,39 +3,12 @@ global:
   evaluation_interval: 15s
   external_labels:
     cluster:     otel-lab
-    environment: development
+    environment: production
 
 scrape_configs:
-  # OTel Collector expone las métricas de los microservicios
+  # OTel Collector expone las métricas agregadas de service-a y service-b
   - job_name: otel-collector
     static_configs:
-      - targets: ["otel-collector:8889"]  # Métricas de las apps via Collector
-    relabel_configs:
-      - source_labels: [service_name]
-        target_label: service
+      - targets: ["otel-collector-svc:8889"]
 
-  # Métricas internas del Collector (instrumentación propia)
-  - job_name: otel-collector-internal
-    static_configs:
-      - targets: ["otel-collector:8888"]
-
-  # Scraping directo de las apps (redundante, para validar)
-  - job_name: service-a-direct
-    static_configs:
-      - targets: ["service-a:9090"]
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: "python_gc.*"
-        action: drop  # Reducir cardinalidad
-
-  - job_name: service-b-direct
-    static_configs:
-      - targets: ["service-b:9091"]
-
-  - job_name: jaeger
-    static_configs:
-      - targets: ["jaeger:14269"]
-
-  - job_name: postgres
-    static_configs:
-      - targets: ["postgres-exporter:9187"]
+  
