@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import psycopg2
+from psycopg2 import pool
 import httpx
 from contextlib import asynccontextmanager
 
@@ -26,7 +27,9 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
-
+from opentelemetry.sdk.metrics._internal.exemplar.exemplar_filter import (
+    TraceBasedExemplarFilter,
+)
 
 # ── Configuración desde variables de entorno ─────────────────────────────────
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "true").lower() == "true"
@@ -62,12 +65,23 @@ tracer = trace.get_tracer("service-a", APP_VERSION)
 
 # ── 3. MeterProvider + Prometheus reader (scraping en :9090/metrics) ──────────
 # PrometheusMetricReader expone las métricas OTel en formato Prometheus
-otlp_metric_exporter = OTLPMetricExporter(endpoint=OTEL_ENDPOINT, insecure=True)
-otlp_metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter, export_interval_millis=15000)
-meter_provider = MeterProvider(
-    resource=resource,
-    metric_readers=[ otlp_metric_reader]
-)
+if OTEL_ENABLED:
+    from opentelemetry.sdk.metrics._internal.exemplar import TraceBasedExemplarFilter
+
+    otlp_metric_exporter = OTLPMetricExporter(endpoint=OTEL_ENDPOINT, insecure=True)
+    otlp_metric_reader   = PeriodicExportingMetricReader(
+        otlp_metric_exporter,
+        export_interval_millis=15000
+    )
+    meter_provider = MeterProvider(
+        resource=resource,
+        metric_readers=[otlp_metric_reader],
+        exemplar_filter=TraceBasedExemplarFilter(),   # ← vincula métricas a trazas activas
+    )
+else:
+    # NoOp real: MeterProvider sin readers → no exporta, no abre sockets, cero overhead
+    meter_provider = MeterProvider(resource=resource)
+
 metrics.set_meter_provider(meter_provider)
 meter = metrics.get_meter("service-a", APP_VERSION)
 
@@ -125,8 +139,19 @@ if OTEL_ENABLED:
     HTTPXClientInstrumentor().instrument(tracer_provider=tracer_provider)
     Psycopg2Instrumentor().instrument(tracer_provider=tracer_provider)
 # ── Conexión DB ───────────────────────────────────────────────────────────────
+# ── Connection Pool PostgreSQL ────────────────────────────────────────────────
+db_pool = pool.ThreadedConnectionPool(
+    minconn=5,
+    maxconn=50,
+    dsn=DB_DSN,
+)
+
 def get_db_connection():
-    return psycopg2.connect(DB_DSN)
+    return db_pool.getconn()
+
+def release_db_connection(conn):
+    if conn is not None:
+        db_pool.putconn(conn)
 
 # ── FastAPI App ───────────────────────────────────────────────────────────────
 @asynccontextmanager
@@ -135,6 +160,8 @@ async def lifespan(app: FastAPI):
     # start_http_server(PROMETHEUS_PORT)
     logger.info("Prometheus metrics server started", extra={"port": PROMETHEUS_PORT})
     yield
+    # Cerrar connection pool
+    db_pool.closeall()
     # Shutdown: flushar todos los spans pendientes
     tracer_provider.shutdown()
     meter_provider.shutdown()
@@ -195,6 +222,10 @@ async def get_order(order_id: str, request: Request):
             "order.id": order_id,
         },
     ) as order_span:
+
+        # El span ya está activo aquí.
+        active_requests.add(1, labels)
+        http_requests_total.add(1, labels)
 
         span_context = order_span.get_span_context()
         trace_id = format(
@@ -306,7 +337,7 @@ async def get_order(order_id: str, request: Request):
                         cur.close()
 
                     if conn is not None:
-                        conn.close()
+                        release_db_connection(conn)
 
             # ─────────────────────────────────────────────────────────────
             # Llamada a service-b

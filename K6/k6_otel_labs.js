@@ -190,7 +190,7 @@ export default function(data) {
   });
 
   // Ocasionalmente hacer una reserva de inventario
-  if (Math.random() < 0.2) {
+/*  if (Math.random() < 0.2) {
     group("reservar_inventario", () => {
       const producto = PRODUCTOS[Math.floor(Math.random() * PRODUCTOS.length)];
       const inicio   = Date.now();
@@ -207,9 +207,9 @@ export default function(data) {
         "reserva ok o sin stock": r => [200, 409].includes(r.status),
       });
     });
-  }
+  }*/
 
-  sleep(Math.random() * 0.8 + 0.2); // 200-1000ms entre requests
+  sleep(Math.random() * 0.1 + 0.1); // 200-1000ms entre requests
 }
 
 // ── VU Function errores — solo para MODO=errores ──────────────────

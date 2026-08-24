@@ -100,13 +100,14 @@ services:
 
   # ── Prometheus ────
   prometheus:
-    image: prom/prometheus:v2.52.0
+    image: prom/prometheus:v2.53.0
     container_name: prometheus
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yaml"
       - "--storage.tsdb.retention.time=7d"
       - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
     volumes:
       - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
       - prometheus-data:/prometheus

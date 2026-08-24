@@ -90,6 +90,7 @@ exporters:
     endpoint: "0.0.0.0:8889"
     namespace: otelcol
     send_timestamps: true
+    enable_open_metrics: true
     metric_expiration: 3m
     resource_to_telemetry_conversion:
       enabled: true

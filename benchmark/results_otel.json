@@ -1,11 +1,11 @@
 {
   "mode": "with_otel",
-  "timestamp": "2026-08-23T23:38:32.899Z",
+  "timestamp": "2026-08-24T18:40:40.038Z",
   "metrics": {
-    "latency_avg_ms": 3054.4310242320826,
-    "latency_p95_ms": 9905.049200000001,
-    "latency_p99_ms": 10001.22523,
-    "error_rate_pct": 12.013651877133105,
-    "throughput_rps": 15.954581347279504
+    "latency_avg_ms": 2037.1604818501867,
+    "latency_p95_ms": 5597.749999999999,
+    "latency_p99_ms": 8402.553359999994,
+    "error_rate_pct": 0.07284205414592691,
+    "throughput_rps": 22.782466909967297
   }
 }

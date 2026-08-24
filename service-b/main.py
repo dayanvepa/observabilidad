@@ -12,6 +12,7 @@ import time
 from contextlib import asynccontextmanager
 
 import psycopg2
+from psycopg2 import pool
 from fastapi import FastAPI, HTTPException
 from pythonjsonlogger import jsonlogger
 
@@ -184,8 +185,19 @@ if OTEL_ENABLED:
 _inventory_cache: dict[str, dict] = {}
 
 
+# ── Connection Pool PostgreSQL ────────────────────────────────────────────────
+db_pool = pool.ThreadedConnectionPool(
+    minconn=5,
+    maxconn=50,
+    dsn=DB_DSN,
+)
+
 def get_db_connection():
-    return psycopg2.connect(DB_DSN)
+    return db_pool.getconn()
+
+def release_db_connection(conn):
+    if conn is not None:
+        db_pool.putconn(conn)
 
 
 def get_current_trace_id() -> str:
@@ -219,7 +231,10 @@ async def lifespan(app: FastAPI):
     )
 
     yield
+    # Cerrar connection pool
+    db_pool.closeall()
 
+    # Flush de telemetría
     tracer_provider.shutdown()
     meter_provider.shutdown()
 
@@ -331,10 +346,7 @@ async def get_inventory(product_id: str):
             cur = conn.cursor()
 
             # Simulación de latencia variable de la base de datos.
-            time.sleep(
-                random.uniform(0.01, 0.09)
-            )
-
+          
             cur.execute(
                 """
                 SELECT product_id, available, warehouse, last_updated
@@ -431,7 +443,7 @@ async def get_inventory(product_id: str):
                 cur.close()
 
             if conn is not None:
-                conn.close()
+                 release_db_connection(conn)
 
 
 @app.post("/inventory/{product_id}/reserve")
@@ -467,7 +479,7 @@ async def reserve_inventory(
         ) as validation_span:
 
             time.sleep(
-                random.uniform(0.005, 0.02)
+                random.uniform(0.001, 0.005)
             )
 
             available = random.randint(0, 100)
