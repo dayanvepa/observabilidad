@@ -31,7 +31,7 @@ import { check, sleep, group } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
 
 // ── Configuración ─────────────────────────────────────────────────
-const BASE_URL = __ENV.BASE_URL || "http://127.0.0.1:8000";
+const BASE_URL = __ENV.BASE_URL || "http://35.226.71.37:8000";
 const MODO     = __ENV.MODO     || "normal";
 
 // ── Métricas custom ───────────────────────────────────────────────

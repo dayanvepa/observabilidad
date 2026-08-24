@@ -1,20 +1,20 @@
 {
   "modo": "normal",
-  "timestamp": "2026-08-22T18:12:50.037Z",
-  "duracion_s": 190.692567,
+  "timestamp": "2026-08-24T02:45:02.776Z",
+  "duracion_s": 191.421274,
   "metricas": {
-    "total_requests": 7050,
-    "rps": 36.97050236887314,
-    "latencia_avg": 68.83611730496459,
-    "latencia_p95": 223.37859999999998,
-    "latencia_p99": 357.89997999999986,
-    "error_rate_pct": 0.15602836879432624,
-    "tasa_exito_pct": 99.94927291173487,
-    "burn_rate": 0.31
+    "total_requests": 2795,
+    "rps": 14.601302883398425,
+    "latencia_avg": 946.2387949910557,
+    "latencia_p95": 2085.3303,
+    "latencia_p99": 2608.98886,
+    "error_rate_pct": 16.565295169946335,
+    "tasa_exito_pct": 25.268125268125267,
+    "burn_rate": 33.13
   },
   "slos": {
-    "latencia_p95_ok": true,
-    "error_rate_ok": true,
-    "burn_rate_ok": true
+    "latencia_p95_ok": false,
+    "error_rate_ok": false,
+    "burn_rate_ok": false
   }
 }
