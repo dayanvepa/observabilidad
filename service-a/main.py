@@ -223,10 +223,6 @@ async def get_order(order_id: str, request: Request):
         },
     ) as order_span:
 
-        # El span ya está activo aquí.
-        active_requests.add(1, labels)
-        http_requests_total.add(1, labels)
-
         span_context = order_span.get_span_context()
         trace_id = format(
             span_context.trace_id,

@@ -16,9 +16,13 @@ spec:
       containers:
         - name: prometheus
           image: prom/prometheus:v2.53.0
-          args:
+          args:            
             - "--config.file=/etc/prometheus/prometheus.yaml"
             - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=7d"
+            - "--enable-feature=exemplar-storage"                    
+            - "--storage.tsdb.exemplar-samples-per-series=100"       
+            - "--web.enable-remote-write-receiver"
           ports:
             - containerPort: 9090
               name: http
